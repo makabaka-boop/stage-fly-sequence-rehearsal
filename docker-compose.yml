@@ -1,0 +1,21 @@
+name: flybar-rehearsal
+
+services:
+  # 纯前端预演台：静态托管，宿主端口由 WEB_PORT 覆盖（默认 8080）
+  web:
+    build:
+      context: .
+      target: web
+    image: flybar-rehearsal-web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
+
+  # 一次性验收服务：构建后运行 Vitest + Playwright，结束即退出
+  # 用法：docker compose run --rm verify
+  verify:
+    build:
+      context: .
+      target: verify
+    image: flybar-rehearsal-verify
+    profiles: ["verify"]
