@@ -65,11 +65,16 @@ export default function App() {
     // 恢复时重新读取并逐卡校验：损坏/不兼容时保留屏幕上的当前序列。
     const result = readStoredDraft();
     if (!result.ok) {
+      // 槽位内容不可恢复：旧摘要已失效，损坏警告出现时不再展示原保存时间与卡数。
+      setDraftMeta(null);
       setStorageCorrupt(true);
       setFeedback({ kind: 'error', text: `无法恢复草稿：${result.reason}，当前序列保持不变。` });
       return;
     }
     if (!result.draft) {
+      // 槽位已空：摘要回到「尚无已保存草稿」，并同步清除可能残留的损坏警告。
+      setDraftMeta(null);
+      setStorageCorrupt(false);
       setFeedback({ kind: 'error', text: '没有可恢复的草稿，当前序列保持不变。' });
       return;
     }

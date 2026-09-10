@@ -36,6 +36,40 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
+ * 完整 ISO 8601 日历形式（日期必填，时间与偏移可选），用于提取日历分量。
+ */
+const ISO_DATE_TIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+/**
+ * 校验保存时间是否为真实存在的日历时间。
+ * Date.parse 对越界的日历分量会静默归一（如 2026-02-30 被吞成 3 月 2 日），
+ * 因此对 ISO 日历形式逐项回读比对，拒绝不存在的日期；
+ * 其余可被解析的形式沿用 Date.parse 的判定，保持兼容。
+ */
+const isValidSavedAt = (value: string): boolean => {
+  if (Number.isNaN(Date.parse(value))) return false;
+  const m = ISO_DATE_TIME_RE.exec(value);
+  if (!m) return true;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = m[4] === undefined ? 0 : Number(m[4]);
+  const minute = m[5] === undefined ? 0 : Number(m[5]);
+  const second = m[6] === undefined ? 0 : Number(m[6]);
+  // Date.UTC 同样会归一越界分量：回读比对即可识别不存在的日历时间
+  const check = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return (
+    check.getUTCFullYear() === year &&
+    check.getUTCMonth() === month - 1 &&
+    check.getUTCDate() === day &&
+    check.getUTCHours() === hour &&
+    check.getUTCMinutes() === minute &&
+    check.getUTCSeconds() === second
+  );
+};
+
+/**
  * 单卡契约校验：类型、稳定标识与载荷逐项检查。
  * - id 必须为非空字符串，且序列内唯一（唯一性由 parseDraft 检查）；
  * - type 必须为受支持的口令类型；
@@ -119,7 +153,7 @@ export function parseDraft(raw: string): LoadDraftResult {
     return { ok: false, corrupt: true, reason: '草稿缺少卡片序列' };
   }
 
-  if (typeof parsed.savedAt !== 'string' || Number.isNaN(Date.parse(parsed.savedAt))) {
+  if (typeof parsed.savedAt !== 'string' || !isValidSavedAt(parsed.savedAt)) {
     return { ok: false, corrupt: true, reason: '草稿保存时间无效' };
   }
 

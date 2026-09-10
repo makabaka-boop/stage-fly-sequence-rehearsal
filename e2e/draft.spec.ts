@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { DRAFT_STORAGE_KEY } from '../src/domain/draft';
+import { DRAFT_STORAGE_KEY, DRAFT_VERSION } from '../src/domain/draft';
 
 const CARD = '[data-testid="sequence-card"]';
 
@@ -235,4 +235,98 @@ test('未保存草稿的用户仍按原流程完成拖放复算（草稿功能�
   await expect(feedback).toContainText('没有可恢复的草稿');
   await expect(page.getByTestId('sequence-card')).toHaveCount(0);
   await expect(page.getByTestId('verdict-banner')).toContainText('尚未加入口令卡');
+});
+
+test('回归：已有草稿时清空存储槽位再恢复，摘要变为「尚无已保存草稿」', async ({ page }) => {
+  await addCycle(page);
+  await page.getByTestId('save-draft').click();
+  await expect(page.getByTestId('draft-feedback')).toHaveAttribute('data-kind', 'saved');
+  await expect(page.getByTestId('draft-saved-at')).toBeVisible();
+  await expect(page.getByTestId('draft-meta')).toContainText('共 6 张卡');
+
+  // 存储槽位被清空（模拟本地数据被清除），屏幕上的序列不变
+  await page.evaluate((key) => window.localStorage.removeItem(key), DRAFT_STORAGE_KEY);
+  await page.getByTestId('restore-draft').click();
+
+  const feedback = page.getByTestId('draft-feedback');
+  await expect(feedback).toHaveAttribute('data-kind', 'error');
+  await expect(feedback).toContainText('没有可恢复的草稿');
+  // 摘要不再展示已失效的保存时间与卡数
+  await expect(page.getByTestId('draft-empty')).toHaveText('尚无已保存草稿');
+  await expect(page.getByTestId('draft-saved-at')).toHaveCount(0);
+  await expect(page.getByTestId('draft-meta')).not.toContainText('张卡');
+  // 屏幕上的当前序列不受影响
+  await expect(page.getByTestId('sequence-card')).toHaveCount(6);
+});
+
+test('回归：已有草稿被覆盖为损坏文本后恢复，不再展示旧草稿摘要', async ({ page }) => {
+  await addCycle(page);
+  await page.getByTestId('save-draft').click();
+  await expect(page.getByTestId('draft-feedback')).toHaveAttribute('data-kind', 'saved');
+  await expect(page.getByTestId('draft-meta')).toContainText('共 6 张卡');
+
+  // 覆盖为损坏文本后恢复：损坏警告出现，旧摘要同步消失
+  await page.evaluate((key) => window.localStorage.setItem(key, '{corrupted!!!'), DRAFT_STORAGE_KEY);
+  await page.getByTestId('restore-draft').click();
+
+  await expect(page.getByTestId('draft-feedback')).toHaveAttribute('data-kind', 'error');
+  await expect(page.getByTestId('draft-corrupt')).toContainText('已损坏');
+  await expect(page.getByTestId('draft-saved-at')).toHaveCount(0);
+  await expect(page.getByTestId('draft-empty')).toHaveText('尚无已保存草稿');
+  // 屏幕上的当前序列与裁决保持不变
+  await expect(page.getByTestId('sequence-card')).toHaveCount(6);
+  await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
+});
+
+test('回归：损坏警告出现后清空槽位再恢复，同步清除损坏警告', async ({ page }) => {
+  // 先制造损坏警告
+  await page.evaluate((key) => window.localStorage.setItem(key, 'BROKEN{json'), DRAFT_STORAGE_KEY);
+  await page.getByTestId('restore-draft').click();
+  await expect(page.getByTestId('draft-corrupt')).toContainText('已损坏');
+
+  // 清空槽位再恢复：无草稿提示出现，损坏警告同步清除
+  await page.evaluate((key) => window.localStorage.removeItem(key), DRAFT_STORAGE_KEY);
+  await page.getByTestId('restore-draft').click();
+
+  const feedback = page.getByTestId('draft-feedback');
+  await expect(feedback).toHaveAttribute('data-kind', 'error');
+  await expect(feedback).toContainText('没有可恢复的草稿');
+  await expect(page.getByTestId('draft-corrupt')).toBeEmpty();
+  await expect(page.getByTestId('draft-empty')).toHaveText('尚无已保存草稿');
+});
+
+test('回归：保存时间为不存在的 2 月 30 日时拒绝恢复并保留序列', async ({ page }) => {
+  await addCycle(page);
+  await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
+
+  // 写入结构合法但保存时间不存在的草稿（Date.parse 会把 2 月 30 日静默吞成 3 月 2 日）
+  await page.evaluate(
+    ({ key, version }) =>
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({
+          version,
+          cards: [{ id: 'forged', type: 'lock' }],
+          savedAt: '2026-02-30T08:00:00.000Z',
+        }),
+      ),
+    { key: DRAFT_STORAGE_KEY, version: DRAFT_VERSION },
+  );
+  await page.getByTestId('restore-draft').click();
+
+  const feedback = page.getByTestId('draft-feedback');
+  await expect(feedback).toHaveAttribute('data-kind', 'error');
+  await expect(feedback).toContainText('无法恢复');
+  await expect(feedback).toContainText('保存时间无效');
+  // 屏幕上的当前序列与裁决保持不变，未被伪造草稿替换
+  await expect(page.getByTestId('sequence-card')).toHaveCount(6);
+  await expect(await cardTypes(page)).toEqual([
+    '装载:100',
+    '锁定',
+    '移动',
+    '归位',
+    '解锁',
+    '卸载',
+  ]);
+  await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
 });

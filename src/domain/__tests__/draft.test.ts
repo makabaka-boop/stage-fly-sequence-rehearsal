@@ -151,6 +151,43 @@ describe('parseDraft：损坏与不兼容', () => {
     if (!result.ok) expect(result.corrupt).toBe(true);
   });
 
+  it('拒绝不存在的日历日期作为保存时间：2 月 30 日会被 Date.parse 静默归一，必须显式拒绝', () => {
+    // 回归：Date.parse('2026-02-30T08:00:00.000Z') 在 V8 中归一为 3 月 2 日而非 NaN
+    const result = parseDraft(
+      JSON.stringify({
+        version: DRAFT_VERSION,
+        cards: [{ id: 'a', type: 'lock' }],
+        savedAt: '2026-02-30T08:00:00.000Z',
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.corrupt).toBe(true);
+      expect(result.reason).toContain('保存时间无效');
+    }
+  });
+
+  it.each([
+    ['平年 2 月 29 日', '2025-02-29T00:00:00.000Z'],
+    ['不存在的 13 月', '2026-13-01T00:00:00.000Z'],
+    ['越界的 25 时', '2026-09-10T25:00:00.000Z'],
+    ['越界的 60 分', '2026-09-10T08:60:00.000Z'],
+  ])('拒绝无效保存时间：%s', (_label, savedAt) => {
+    const result = parseDraft(JSON.stringify({ version: DRAFT_VERSION, cards: [], savedAt }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('保存时间无效');
+  });
+
+  it.each([
+    ['闰年 2 月 29 日', '2024-02-29T23:59:59.000Z'],
+    ['普通日历时间', '2026-09-10T08:00:00.000Z'],
+    ['带偏移的时区', '2026-09-10T08:00:00+08:00'],
+  ])('接受真实存在的保存时间：%s', (_label, savedAt) => {
+    const result = parseDraft(JSON.stringify({ version: DRAFT_VERSION, cards: [], savedAt }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.draft.savedAt).toBe(savedAt);
+  });
+
   it('清洗多余字段：仅保留契约内字段', () => {
     const raw = JSON.stringify({
       version: DRAFT_VERSION,
@@ -280,5 +317,22 @@ describe('浏览器存储读写', () => {
     const result = readStoredDraft(storage);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.corrupt).toBe(true);
+  });
+
+  it('槽位中草稿的保存时间不存在（2 月 30 日）时读取失败并标记 corrupt，不返回草稿', () => {
+    // 回归：写入二月三十日的草稿必须被拒绝，不能像合法草稿一样读回
+    const storage = makeMemoryStorage({
+      [DRAFT_STORAGE_KEY]: JSON.stringify({
+        version: DRAFT_VERSION,
+        cards: [{ id: 'a', type: 'load', weightKg: 100 }],
+        savedAt: '2026-02-30T08:00:00.000Z',
+      }),
+    });
+    const result = readStoredDraft(storage);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.corrupt).toBe(true);
+      expect(result.reason).toContain('保存时间无效');
+    }
   });
 });
