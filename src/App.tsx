@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DraftControls, type DraftFeedback } from './components/DraftControls';
 import { Palette } from './components/Palette';
 import { SequenceList } from './components/SequenceList';
 import { StatePanel } from './components/StatePanel';
 import { Trajectory } from './components/Trajectory';
 import { VerdictBanner } from './components/VerdictBanner';
 import { CARD_ORDER } from './domain/cards';
+import { readStoredDraft, saveDraft, type DraftMeta } from './domain/draft';
 import { adjudicate } from './domain/machine';
 import type { ActionCard, CardType } from './domain/types';
 
@@ -20,12 +22,67 @@ const makeCard = (type: CardType, weightKg?: number): ActionCard => ({
 });
 
 export default function App() {
+  // 空草稿启动：初始序列始终为空；草稿只存在浏览器存储中，刷新不会自动覆盖屏幕。
   const [cards, setCards] = useState<ActionCard[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [draftMeta, setDraftMeta] = useState<DraftMeta | null>(null);
+  const [storageCorrupt, setStorageCorrupt] = useState(false);
+  const [feedback, setFeedback] = useState<DraftFeedback | null>(null);
 
-  // 结论完全由 cards 派生：任何增删或重排都会改变 cards，
+  // 启动时仅探测草稿槽位是否可恢复：任何存储异常都在操作区说明，不能穿透到页面。
+  useEffect(() => {
+    const result = readStoredDraft();
+    if (result.ok) {
+      if (result.draft) {
+        setDraftMeta({ savedAt: result.draft.savedAt, cardCount: result.draft.cards.length });
+      }
+    } else {
+      setStorageCorrupt(true);
+    }
+  }, []);
+
+  const clearFeedback = useCallback(() => setFeedback(null), []);
+
+  // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
   const verdict = useMemo(() => adjudicate(cards), [cards]);
+
+  const handleSaveDraft = useCallback(() => {
+    const result = saveDraft(cards);
+    if (result.ok) {
+      setDraftMeta(result.meta);
+      setStorageCorrupt(false);
+      setFeedback({
+        kind: 'saved',
+        text: `已保存 ${result.meta.cardCount} 张口令卡，可随时恢复或刷新后找回。`,
+      });
+    } else {
+      setFeedback({ kind: 'error', text: result.reason });
+    }
+  }, [cards]);
+
+  const handleRestoreDraft = useCallback(() => {
+    // 恢复时重新读取并逐卡校验：损坏/不兼容时保留屏幕上的当前序列。
+    const result = readStoredDraft();
+    if (!result.ok) {
+      setStorageCorrupt(true);
+      setFeedback({ kind: 'error', text: `无法恢复草稿：${result.reason}，当前序列保持不变。` });
+      return;
+    }
+    if (!result.draft) {
+      setFeedback({ kind: 'error', text: '没有可恢复的草稿，当前序列保持不变。' });
+      return;
+    }
+    // 原子替换整套序列：单次 state 更新后立即走现有裁决链。
+    setCards(result.draft.cards);
+    setDragIndex(null);
+    setDraftMeta({ savedAt: result.draft.savedAt, cardCount: result.draft.cards.length });
+    setStorageCorrupt(false);
+    setFeedback({
+      kind: 'restored',
+      text: `已恢复 ${result.draft.cards.length} 张口令卡并重新裁决。`,
+    });
+  }, []);
 
   const addCard = (type: CardType, weightKg?: number) =>
     setCards((prev) => [...prev, makeCard(type, weightKg)]);
@@ -72,12 +129,22 @@ export default function App() {
         </p>
       </header>
       <main className="layout">
-        <Palette
-          onAdd={addCard}
-          onAddCycle={addCycle}
-          onClear={() => setCards([])}
-          hasCards={cards.length > 0}
-        />
+        <div className="palette-column">
+          <Palette
+            onAdd={addCard}
+            onAddCycle={addCycle}
+            onClear={() => setCards([])}
+            hasCards={cards.length > 0}
+          />
+          <DraftControls
+            meta={draftMeta}
+            storageCorrupt={storageCorrupt}
+            feedback={feedback}
+            onSave={handleSaveDraft}
+            onRestore={handleRestoreDraft}
+            onFeedbackDone={clearFeedback}
+          />
+        </div>
         <section className="panel sequence-panel" aria-label="口令序列">
           <h2>口令序列（可拖放排序）</h2>
           <SequenceList

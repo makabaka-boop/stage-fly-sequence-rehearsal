@@ -49,6 +49,12 @@ body {
   align-items: start;
 }
 
+.palette-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 @media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;
@@ -145,6 +151,94 @@ input[type='number']:focus {
 
 .palette-actions button:not(:disabled):hover {
   border-color: var(--accent);
+}
+
+/* ---- 本地排练草稿 ---- */
+.draft-panel {
+  font-size: 13px;
+}
+
+.draft-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.draft-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 34px;
+  padding: 8px 10px;
+  background: #12141a;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.draft-saved {
+  font-weight: 600;
+}
+
+.draft-count,
+.draft-none {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.draft-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.draft-actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: #2a2f40;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.draft-actions button:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.draft-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.draft-corrupt {
+  margin: 8px 0 0;
+  min-height: 18px;
+  color: var(--err);
+  font-size: 12px;
+}
+
+.draft-feedback {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.draft-feedback strong {
+  margin-right: 4px;
+}
+
+.feedback-saved,
+.feedback-restored {
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  background: #16261f;
+}
+
+.feedback-error {
+  color: var(--err);
+  border: 1px solid var(--err);
+  background: #33222a;
 }
 
 /* ---- 口令序列 ---- */
