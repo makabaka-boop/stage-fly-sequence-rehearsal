@@ -12,6 +12,8 @@ interface DraftControlsProps {
   /** 存储槽位中的草稿损坏或版本不兼容时置位 */
   storageCorrupt: boolean;
   feedback: DraftFeedback | null;
+  /** 走台进行中置位：草稿操作锁定，结束后恢复 */
+  disabled?: boolean;
   onSave: () => void;
   onRestore: () => void;
   onFeedbackDone: () => void;
@@ -38,6 +40,7 @@ export function DraftControls({
   meta,
   storageCorrupt,
   feedback,
+  disabled = false,
   onSave,
   onRestore,
   onFeedbackDone,
@@ -74,10 +77,10 @@ export function DraftControls({
         )}
       </div>
       <div className="draft-actions">
-        <button type="button" data-testid="save-draft" onClick={onSave}>
+        <button type="button" data-testid="save-draft" disabled={disabled} onClick={onSave}>
           保存草稿
         </button>
-        <button type="button" data-testid="restore-draft" onClick={onRestore}>
+        <button type="button" data-testid="restore-draft" disabled={disabled} onClick={onRestore}>
           恢复草稿
         </button>
       </div>

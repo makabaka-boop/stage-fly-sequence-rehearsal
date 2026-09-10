@@ -241,6 +241,110 @@ input[type='number']:focus {
   background: #33222a;
 }
 
+/* ---- 走台会话 ---- */
+.walkthrough-panel {
+  font-size: 13px;
+}
+
+.walkthrough-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.walkthrough-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.walkthrough-panel button {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: #2a2f40;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.walkthrough-panel button:hover {
+  border-color: var(--text);
+}
+
+.walkthrough-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.walkthrough-actions button {
+  flex: 1;
+}
+
+.walkthrough-feedback {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--err);
+  border: 1px solid var(--err);
+  background: #33222a;
+}
+
+.walkthrough-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.walkthrough-current {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: #12141a;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.walkthrough-current-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.walkthrough-current strong {
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+
+.walkthrough-state {
+  margin: 0;
+  font-size: 13px;
+}
+
+.walkthrough-result {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.walkthrough-completed {
+  color: var(--ok);
+}
+
+.walkthrough-blocked {
+  color: var(--err);
+}
+
+.walkthrough-reason {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--err);
+  border: 1px solid var(--err);
+  background: #33222a;
+}
+
 /* ---- 口令序列 ---- */
 .empty-hint {
   color: var(--muted);

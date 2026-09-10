@@ -5,9 +5,11 @@ import { SequenceList } from './components/SequenceList';
 import { StatePanel } from './components/StatePanel';
 import { Trajectory } from './components/Trajectory';
 import { VerdictBanner } from './components/VerdictBanner';
+import { WalkthroughPanel } from './components/WalkthroughPanel';
 import { CARD_ORDER } from './domain/cards';
 import { readStoredDraft, saveDraft, type DraftMeta } from './domain/draft';
 import { adjudicate } from './domain/machine';
+import { executeNext, idleSession, startSession, type WalkSession } from './domain/session';
 import type { ActionCard, CardType } from './domain/types';
 
 const newId = (): string =>
@@ -28,6 +30,9 @@ export default function App() {
   const [draftMeta, setDraftMeta] = useState<DraftMeta | null>(null);
   const [storageCorrupt, setStorageCorrupt] = useState(false);
   const [feedback, setFeedback] = useState<DraftFeedback | null>(null);
+  // 走台会话：待命 / 进行中 / 完成 / 受阻，由纯函数推进，刷新即回到待命
+  const [session, setSession] = useState<WalkSession>(() => idleSession());
+  const [sessionFeedback, setSessionFeedback] = useState<string | null>(null);
 
   // 启动时仅探测草稿槽位是否可恢复：任何存储异常都在操作区说明，不能穿透到页面。
   useEffect(() => {
@@ -46,6 +51,29 @@ export default function App() {
   // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
   const verdict = useMemo(() => adjudicate(cards), [cards]);
+
+  // 走台进行中：锁定牌库、排序、重量、删除与草稿操作，结束或受阻后恢复编辑
+  const sessionRunning = session.status === 'running';
+
+  // 序列一旦变化（如空序列反馈后添加了卡），过期的走台反馈即清除
+  useEffect(() => setSessionFeedback(null), [cards]);
+
+  const handleStartSession = useCallback(() => {
+    if (cards.length === 0) {
+      // 空序列无法开始：留在待命并给出可理解的反馈
+      setSession(idleSession());
+      setSessionFeedback('序列为空，无法开始走台：请先从牌库添加口令卡，或点击「生成标准闭环」。');
+      return;
+    }
+    setSessionFeedback(null);
+    // 复制当时的卡序与重量作为会话快照，会话期间不随牌面编辑变化
+    setSession(startSession(cards));
+  }, [cards]);
+
+  // 每次点击都通过现有单卡裁决推进游标；非进行中时纯函数原样返回，不会越过末张或受阻卡
+  const handleExecuteNext = useCallback(() => {
+    setSession((prev) => executeNext(prev));
+  }, []);
 
   const handleSaveDraft = useCallback(() => {
     const result = saveDraft(cards);
@@ -140,11 +168,13 @@ export default function App() {
             onAddCycle={addCycle}
             onClear={() => setCards([])}
             hasCards={cards.length > 0}
+            disabled={sessionRunning}
           />
           <DraftControls
             meta={draftMeta}
             storageCorrupt={storageCorrupt}
             feedback={feedback}
+            disabled={sessionRunning}
             onSave={handleSaveDraft}
             onRestore={handleRestoreDraft}
             onFeedbackDone={clearFeedback}
@@ -156,6 +186,7 @@ export default function App() {
             cards={cards}
             steps={verdict.steps}
             dragIndex={dragIndex}
+            locked={sessionRunning}
             onDragStart={setDragIndex}
             onDragEnd={() => setDragIndex(null)}
             onDropAt={dropAt}
@@ -165,11 +196,21 @@ export default function App() {
           />
         </section>
         <aside className="side">
-          <VerdictBanner verdict={verdict} cardCount={cards.length} />
-          <StatePanel state={verdict.finalState} label={stateLabel} />
+          <WalkthroughPanel
+            session={session}
+            feedback={sessionFeedback}
+            onStart={handleStartSession}
+            onExecuteNext={handleExecuteNext}
+          />
+          {!sessionRunning && (
+            <>
+              <VerdictBanner verdict={verdict} cardCount={cards.length} />
+              <StatePanel state={verdict.finalState} label={stateLabel} />
+            </>
+          )}
         </aside>
       </main>
-      <Trajectory steps={verdict.steps} />
+      {!sessionRunning && <Trajectory steps={verdict.steps} />}
     </div>
   );
 }

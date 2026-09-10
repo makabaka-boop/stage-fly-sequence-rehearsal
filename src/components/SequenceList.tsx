@@ -5,6 +5,8 @@ interface SequenceListProps {
   cards: ActionCard[];
   steps: StepRecord[];
   dragIndex: number | null;
+  /** 走台进行中置位：锁定排序、重量与删除，并隐藏裁决角标（走台结果由走台面板呈现） */
+  locked?: boolean;
   onDragStart: (index: number) => void;
   onDragEnd: () => void;
   onDropAt: (index: number) => void;
@@ -24,6 +26,7 @@ export function SequenceList({
   cards,
   steps,
   dragIndex,
+  locked = false,
   onDragStart,
   onDragEnd,
   onDropAt,
@@ -39,7 +42,7 @@ export function SequenceList({
     <ol className="sequence-list" data-testid="sequence-list">
       {cards.map((card, i) => {
         const def = CARD_DEFS[card.type];
-        const status = steps[i]?.status;
+        const status = locked ? undefined : steps[i]?.status;
         return (
           <li
             key={card.id}
@@ -50,8 +53,9 @@ export function SequenceList({
               status ? `card-${status}` : '',
               dragIndex === i ? 'dragging' : '',
             ].join(' ')}
-            draggable
+            draggable={!locked}
             onDragStart={(e) => {
+              if (locked) return;
               e.dataTransfer.effectAllowed = 'move';
               e.dataTransfer.setData('text/plain', String(i));
               onDragStart(i);
@@ -62,6 +66,7 @@ export function SequenceList({
             }}
             onDrop={(e) => {
               e.preventDefault();
+              if (locked) return;
               onDropAt(i);
             }}
             onDragEnd={onDragEnd}
@@ -78,6 +83,7 @@ export function SequenceList({
                   type="number"
                   value={card.weightKg ?? ''}
                   placeholder="未填写"
+                  disabled={locked}
                   onChange={(e) => {
                     const v = e.target.valueAsNumber;
                     onWeightChange(card.id, Number.isNaN(v) ? undefined : v);
@@ -96,7 +102,7 @@ export function SequenceList({
                 type="button"
                 data-testid="card-up"
                 aria-label="上移"
-                disabled={i === 0}
+                disabled={i === 0 || locked}
                 onClick={() => onMove(i, i - 1)}
               >
                 ↑
@@ -105,7 +111,7 @@ export function SequenceList({
                 type="button"
                 data-testid="card-down"
                 aria-label="下移"
-                disabled={i === cards.length - 1}
+                disabled={i === cards.length - 1 || locked}
                 onClick={() => onMove(i, i + 1)}
               >
                 ↓
@@ -114,6 +120,7 @@ export function SequenceList({
                 type="button"
                 data-testid="card-delete"
                 aria-label="删除"
+                disabled={locked}
                 onClick={() => onRemove(card.id)}
               >
                 ✕

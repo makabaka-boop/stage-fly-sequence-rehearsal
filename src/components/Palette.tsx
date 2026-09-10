@@ -7,10 +7,12 @@ interface PaletteProps {
   onAddCycle: (weightKg?: number) => void;
   onClear: () => void;
   hasCards: boolean;
+  /** 走台进行中置位：牌库整体锁定，不可添加或清空 */
+  disabled?: boolean;
 }
 
 /** 左侧牌库：添加单卡、生成标准闭环、清空 */
-export function Palette({ onAdd, onAddCycle, onClear, hasCards }: PaletteProps) {
+export function Palette({ onAdd, onAddCycle, onClear, hasCards, disabled = false }: PaletteProps) {
   const [weightText, setWeightText] = useState('100');
   const parsed = Number(weightText);
   const weight = weightText.trim() === '' || !Number.isFinite(parsed) ? undefined : parsed;
@@ -26,6 +28,7 @@ export function Palette({ onAdd, onAddCycle, onClear, hasCards }: PaletteProps) 
           value={weightText}
           onChange={(e) => setWeightText(e.target.value)}
           placeholder="1–500 的整数"
+          disabled={disabled}
         />
       </label>
       <div className="palette-buttons">
@@ -38,6 +41,7 @@ export function Palette({ onAdd, onAddCycle, onClear, hasCards }: PaletteProps) 
               data-testid={`add-${type}`}
               className="palette-btn"
               title={def.hint}
+              disabled={disabled}
               onClick={() => onAdd(type, type === 'load' ? weight : undefined)}
             >
               <strong>＋ {def.name}</strong>
@@ -47,10 +51,10 @@ export function Palette({ onAdd, onAddCycle, onClear, hasCards }: PaletteProps) 
         })}
       </div>
       <div className="palette-actions">
-        <button type="button" data-testid="add-cycle" onClick={() => onAddCycle(weight)}>
+        <button type="button" data-testid="add-cycle" disabled={disabled} onClick={() => onAddCycle(weight)}>
           生成标准闭环
         </button>
-        <button type="button" data-testid="clear-all" onClick={onClear} disabled={!hasCards}>
+        <button type="button" data-testid="clear-all" onClick={onClear} disabled={!hasCards || disabled}>
           清空
         </button>
       </div>
