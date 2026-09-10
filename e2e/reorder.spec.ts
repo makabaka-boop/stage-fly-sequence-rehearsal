@@ -98,6 +98,32 @@ test('删除卡片后立即清除旧结论并重新裁决', async ({ page }) => 
   await expect(page.getByTestId('sequence-card')).toHaveCount(5);
 });
 
+test('装载后直接卸载不闭合：判为首错，拖入锁定与解锁后恢复闭合', async ({ page }) => {
+  await page.getByTestId('add-load').click();
+  await page.getByTestId('add-unload').click();
+
+  // 装载后直接卸载：首错，必须锁定再解锁
+  const banner = page.getByTestId('verdict-banner');
+  await expect(banner).toContainText('首错');
+  await expect(banner).toContainText('第 2 张「卸载」');
+  await expect(banner).toContainText('先锁定再解锁');
+  await expect(banner).not.toContainText('闭合');
+  await expect(page.getByTestId('state-load')).toHaveText('100 千克');
+
+  // 追加锁定、解锁，再把「卸载」拖到末尾 → 装载 锁定 解锁 卸载，恢复闭合
+  await page.getByTestId('add-lock').click();
+  await page.getByTestId('add-unlock').click();
+  await page.dragAndDrop(`${CARD} >> nth=1`, `${CARD} >> nth=3`);
+
+  const cards = page.getByTestId('sequence-card');
+  await expect(cards.nth(0)).toContainText('装载');
+  await expect(cards.nth(1)).toContainText('锁定');
+  await expect(cards.nth(2)).toContainText('解锁');
+  await expect(cards.nth(3)).toContainText('卸载');
+  await expect(banner).toContainText('闭合');
+  await expect(page.getByTestId('state-load')).toHaveText('空载');
+});
+
 function cards0(page: Page) {
   return page.getByTestId('sequence-card').nth(0);
 }

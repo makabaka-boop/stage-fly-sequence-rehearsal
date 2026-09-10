@@ -1,3 +1,4 @@
+import { describeLock } from '../domain/describe';
 import type { RigState } from '../domain/types';
 
 interface StatePanelProps {
@@ -21,7 +22,7 @@ export function StatePanel({ state, label }: StatePanelProps) {
         </div>
         <div className="chip">
           <span className="chip-label">锁定</span>
-          <strong data-testid="state-lock">{state.locked ? '已锁定' : '未锁定'}</strong>
+          <strong data-testid="state-lock">{describeLock(state)}</strong>
         </div>
       </div>
     </section>

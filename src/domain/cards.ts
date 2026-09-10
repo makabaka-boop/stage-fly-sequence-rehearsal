@@ -12,7 +12,7 @@ export const CARD_DEFS: Record<CardType, CardDef> = {
   move: { type: 'move', name: '移动', hint: '锁定后可移动到舞台位' },
   return: { type: 'return', name: '归位', hint: '舞台位只能归位' },
   unlock: { type: 'unlock', name: '解锁', hint: '归位且仍锁定时才可解锁' },
-  unload: { type: 'unload', name: '卸载', hint: '解锁后才能卸载，回到空载归位' },
+  unload: { type: 'unload', name: '卸载', hint: '须先锁定再解锁，才能卸载回空载归位' },
 };
 
 /** 牌库展示顺序，也是标准闭环的动作顺序 */

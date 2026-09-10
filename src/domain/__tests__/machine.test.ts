@@ -20,6 +20,7 @@ const loaded = (weightKg: number, extra?: Partial<RigState>): RigState => ({
   loadKg: weightKg,
   position: 'home',
   locked: false,
+  unlockedSinceLoad: false,
   ...extra,
 });
 
@@ -34,8 +35,13 @@ const fullCycle = (weightKg = 100): ActionCard[] => [
 ];
 
 describe('初始状态', () => {
-  it('为空载、归位、未锁定', () => {
-    expect(INITIAL_STATE).toEqual({ loadKg: null, position: 'home', locked: false });
+  it('为空载、归位、未锁定，且无解锁记录', () => {
+    expect(INITIAL_STATE).toEqual({
+      loadKg: null,
+      position: 'home',
+      locked: false,
+      unlockedSinceLoad: false,
+    });
     expect(isInitialState(INITIAL_STATE)).toBe(true);
   });
 });
@@ -146,10 +152,11 @@ describe('解锁', () => {
     if (!r.ok) expect(r.reason).toContain('未归位先解锁');
   });
 
-  it('归位且仍锁定时可解锁', () => {
+  it('归位且仍锁定时可解锁，并记录本次装载已解锁', () => {
     const r = applyCard(loaded(80, { locked: true }), card('unlock'));
     expect(r.ok).toBe(true);
     expect(r.state.locked).toBe(false);
+    expect(r.state.unlockedSinceLoad).toBe(true);
   });
 });
 
@@ -166,8 +173,15 @@ describe('卸载', () => {
     if (!r.ok) expect(r.reason).toContain('先解锁');
   });
 
-  it('解锁后卸载回到初始状态', () => {
+  it('装载后未经过锁定不能直接卸载（装载后只能锁定）', () => {
     const r = applyCard(loaded(80), card('unload'));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('先锁定再解锁');
+    expect(r.state).toEqual(loaded(80));
+  });
+
+  it('锁定并解锁后才能卸载，且回到初始状态', () => {
+    const r = applyCard(loaded(80, { unlockedSinceLoad: true }), card('unload'));
     expect(r.ok).toBe(true);
     expect(isInitialState(r.state)).toBe(true);
   });
@@ -195,6 +209,36 @@ describe('整套裁决', () => {
     expect(v.firstErrorIndex).toBeNull();
     expect(v.closed).toBe(false);
     expect(v.finalState).toEqual(loaded(50, { locked: true }));
+  });
+
+  it('装载后直接卸载不闭合：判定为首错，须先锁定再解锁', () => {
+    const v = adjudicate([card('load', 100), card('unload')]);
+    expect(v.closed).toBe(false);
+    expect(v.firstErrorIndex).toBe(1);
+    expect(v.steps[1].card.type).toBe('unload');
+    expect(v.steps[1].reason).toContain('先锁定再解锁');
+    expect(v.finalState).toEqual(loaded(100));
+  });
+
+  it('装载→锁定→解锁→卸载（不经舞台位）同样闭合', () => {
+    const v = adjudicate([card('load', 100), card('lock'), card('unlock'), card('unload')]);
+    expect(v.firstErrorIndex).toBeNull();
+    expect(v.closed).toBe(true);
+    expect(v.finalState).toEqual(INITIAL_STATE);
+  });
+
+  it('再次装载后解锁记录复位：仍须先锁定再解锁', () => {
+    const v = adjudicate([
+      card('load', 100),
+      card('lock'),
+      card('unlock'),
+      card('unload'),
+      card('load', 50),
+      card('unload'),
+    ]);
+    expect(v.firstErrorIndex).toBe(5);
+    expect(v.steps[5].reason).toContain('先锁定再解锁');
+    expect(v.finalState).toEqual(loaded(50));
   });
 
   it('首错即停：后续卡被跳过且不再改变状态', () => {

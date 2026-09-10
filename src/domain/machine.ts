@@ -5,13 +5,14 @@ export const INITIAL_STATE: RigState = Object.freeze({
   loadKg: null,
   position: 'home',
   locked: false,
+  unlockedSinceLoad: false,
 });
 
 export const MIN_WEIGHT_KG = 1;
 export const MAX_WEIGHT_KG = 500;
 
 export function isInitialState(s: RigState): boolean {
-  return s.loadKg === null && s.position === 'home' && !s.locked;
+  return s.loadKg === null && s.position === 'home' && !s.locked && !s.unlockedSinceLoad;
 }
 
 export type ApplyResult =
@@ -36,7 +37,7 @@ export function applyCard(state: RigState, card: ActionCard): ApplyResult {
         const shown = w === undefined ? '未填写' : String(w);
         return err(state, `装载重量必须为 ${MIN_WEIGHT_KG}–${MAX_WEIGHT_KG} 千克的整数，当前为「${shown}」`);
       }
-      return ok({ ...state, loadKg: w });
+      return ok({ ...state, loadKg: w, unlockedSinceLoad: false });
     }
     case 'lock': {
       if (state.loadKg === null) return err(state, '空载时不能锁定，请先装载');
@@ -55,12 +56,15 @@ export function applyCard(state: RigState, card: ActionCard): ApplyResult {
     case 'unlock': {
       if (!state.locked) return err(state, '吊杆未锁定，不能解锁');
       if (state.position !== 'home') return err(state, '未归位先解锁：必须归位后才能解锁');
-      return ok({ ...state, locked: false });
+      return ok({ ...state, locked: false, unlockedSinceLoad: true });
     }
     case 'unload': {
       if (state.loadKg === null) return err(state, '空载时不能卸载');
       if (state.locked) return err(state, '吊杆仍锁定，请先解锁再卸载');
-      return ok({ ...state, loadKg: null });
+      if (!state.unlockedSinceLoad) {
+        return err(state, '装载后只能锁定：须先锁定再解锁，才能卸载');
+      }
+      return ok({ ...state, loadKg: null, unlockedSinceLoad: false });
     }
   }
 }

@@ -7,6 +7,12 @@ export interface RigState {
   loadKg: number | null;
   position: Position;
   locked: boolean;
+  /**
+   * 本次装载后是否已完成过「锁定→解锁」。
+   * 装载与解锁后的物理状态相同（载重·归位·未锁定），
+   * 仅靠物理量无法区分，须用该标记裁决「解锁后才能卸载」。
+   */
+  unlockedSinceLoad: boolean;
 }
 
 /** 口令卡类型：装载 / 锁定 / 移动 / 归位 / 解锁 / 卸载 */
