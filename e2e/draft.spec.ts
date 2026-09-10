@@ -167,6 +167,47 @@ test('版本不兼容的草稿不能恢复，当前序列保留', async ({ page 
   await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
 });
 
+test('当前序列含非法装载重量时拒绝保存：提示失败且不覆盖原草稿', async ({ page }) => {
+  await addCycle(page);
+  await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
+  await page.getByTestId('save-draft').click();
+  await expect(page.getByTestId('draft-feedback')).toHaveAttribute('data-kind', 'saved');
+
+  // 继续试改：把装载重量改成越界的 600，实时裁决判为首错
+  await page.getByTestId('card-weight').first().fill('600');
+  await expect(page.getByTestId('verdict-banner')).toContainText('首错');
+
+  // 尝试保存非法序列：操作失败反馈，不能提示已保存
+  await page.getByTestId('save-draft').click();
+  const feedback = page.getByTestId('draft-feedback');
+  await expect(feedback).toHaveAttribute('data-kind', 'error');
+  await expect(feedback).toContainText('草稿未保存');
+  await expect(feedback).toContainText('1–500');
+
+  // 槽位中的原合法草稿未被覆盖：保存时间仍是原来的 100 千克闭环
+  const stored = await page.evaluate(
+    (key) => {
+      const d = JSON.parse(window.localStorage.getItem(key) ?? 'null');
+      return { weight: d?.cards?.[0]?.weightKg, count: d?.cards?.length };
+    },
+    DRAFT_STORAGE_KEY,
+  );
+  expect(stored).toEqual({ weight: 100, count: 6 });
+
+  // 恢复草稿仍然成功：原子还原为合法闭环
+  await page.getByTestId('restore-draft').click();
+  await expect(page.getByTestId('draft-feedback')).toHaveAttribute('data-kind', 'restored');
+  await expect(await cardTypes(page)).toEqual([
+    '装载:100',
+    '锁定',
+    '移动',
+    '归位',
+    '解锁',
+    '卸载',
+  ]);
+  await expect(page.getByTestId('verdict-banner')).toContainText('闭合');
+});
+
 test('未保存草稿的用户仍按原流程完成拖放复算（草稿功能零干扰）', async ({ page }) => {
   await addCycle(page);
   await expect(page.getByTestId('verdict-banner')).toContainText('闭合');

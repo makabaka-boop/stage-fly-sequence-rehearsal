@@ -217,6 +217,64 @@ describe('浏览器存储读写', () => {
     expect(read.ok).toBe(false);
   });
 
+  it.each([
+    ['重量为 0', 0],
+    ['重量为 501', 501],
+    ['重量为小数', 2.5],
+  ])('当前序列装载重量不合法（%s）时拒绝保存', (_label, w) => {
+    const storage = makeMemoryStorage();
+    const result = saveDraft([card('load', w), card('lock')], storage);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('草稿未保存');
+    // 未触碰存储槽位
+    expect(storage.setItem).not.toHaveBeenCalled();
+    const read = readStoredDraft(storage);
+    expect(read.ok).toBe(true);
+    if (read.ok) expect(read.draft).toBeNull();
+  });
+
+  it('保存非法序列失败时不覆盖此前已保存的合法草稿', () => {
+    const storage = makeMemoryStorage();
+    const good = fullCycle(120);
+    const goodAt = new Date('2026-09-10T08:00:00.000Z');
+    expect(saveDraft(good, storage, goodAt).ok).toBe(true);
+
+    // 监督继续试改出非法重量后尝试保存
+    const bad = [card('load', 600)];
+    const result = saveDraft(bad, storage, new Date('2026-09-10T09:00:00.000Z'));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('1–500');
+
+    // 槽位仍是原合法草稿：可恢复且卡序、标识、重量、保存时间不变
+    const read = readStoredDraft(storage);
+    expect(read.ok).toBe(true);
+    if (read.ok && read.draft) {
+      expect(read.draft.cards.map((c) => c.id)).toEqual(good.map((c) => c.id));
+      expect(read.draft.cards[0].weightKg).toBe(120);
+      expect(read.draft.savedAt).toBe('2026-09-10T08:00:00.000Z');
+    }
+  });
+
+  it('保存时拒绝重复稳定标识', () => {
+    const storage = makeMemoryStorage();
+    const dup: ActionCard[] = [
+      { id: 'same', type: 'load', weightKg: 10 },
+      { id: 'same', type: 'lock' },
+    ];
+    const result = saveDraft(dup, storage);
+    expect(result.ok).toBe(false);
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('空序列可以保存（合法空草稿）', () => {
+    const storage = makeMemoryStorage();
+    const result = saveDraft([], storage);
+    expect(result.ok).toBe(true);
+    const read = readStoredDraft(storage);
+    expect(read.ok).toBe(true);
+    if (read.ok) expect(read.draft?.cards).toEqual([]);
+  });
+
   it('槽位中是伪造的损坏 JSON 时返回 corrupt，调用方据此保留当前序列', () => {
     const storage = makeMemoryStorage({ [DRAFT_STORAGE_KEY]: 'forged{garbage' });
     const result = readStoredDraft(storage);

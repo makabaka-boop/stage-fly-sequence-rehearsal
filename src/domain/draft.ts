@@ -75,6 +75,26 @@ export function validateCard(value: unknown): { ok: true; card: ActionCard } | {
 }
 
 /**
+ * 逐卡校验一个已构造的 ActionCard 序列（保存路径用）。
+ * 与读取路径共用 validateCard 的类型/标识/载荷规则，并额外检查 id 唯一。
+ * 注：运行中的序列允许存在非法重量（由实时裁决给出首错），但这样的序列
+ * 不满足草稿契约，不能保存。
+ */
+export function validateDraftCards(cards: readonly ActionCard[]): { ok: true } | { ok: false; reason: string } {
+  if (!Array.isArray(cards)) return { ok: false, reason: '草稿缺少卡片序列' };
+  const seenIds = new Set<string>();
+  for (const card of cards) {
+    const result = validateCard(card);
+    if (!result.ok) return result;
+    if (seenIds.has(result.card.id)) {
+      return { ok: false, reason: `卡片稳定标识重复（标识「${result.card.id}」）` };
+    }
+    seenIds.add(result.card.id);
+  }
+  return { ok: true };
+}
+
+/**
  * 解析并逐卡校验草稿 JSON。
  * 任何结构损坏、版本不兼容或卡片不合法都会返回失败结果，
  * 由调用方保留屏幕上的当前序列，绝不让异常穿透到页面。
@@ -104,16 +124,13 @@ export function parseDraft(raw: string): LoadDraftResult {
   }
 
   const cards: ActionCard[] = [];
-  const seenIds = new Set<string>();
   for (const item of parsed.cards) {
     const result = validateCard(item);
     if (!result.ok) return { ok: false, corrupt: true, reason: result.reason };
-    if (seenIds.has(result.card.id)) {
-      return { ok: false, corrupt: true, reason: `卡片稳定标识重复（标识「${result.card.id}」）` };
-    }
-    seenIds.add(result.card.id);
     cards.push(result.card);
   }
+  const checked = validateDraftCards(cards);
+  if (!checked.ok) return { ok: false, corrupt: true, reason: checked.reason };
 
   return { ok: true, draft: { version: DRAFT_VERSION, cards, savedAt: parsed.savedAt } };
 }
@@ -141,9 +158,14 @@ const safeStorage = (): Storage | null => {
 
 /**
  * 把草稿原子写入浏览器存储（单槽位覆盖写）。
- * localStorage 不可用或写入被拒（隐私模式/配额）时返回失败，不抛出异常。
+ * 写入前先逐卡校验：当前序列不满足草稿契约（如装载重量越界）时直接失败，
+ * 不触碰存储槽位，原已保存的草稿保持不变。
+ * localStorage 不可用或写入被拒（隐私模式/配额）时同样返回失败，不抛出异常。
  */
 export function saveDraft(cards: readonly ActionCard[], storage?: Storage | null, now?: Date): SaveDraftResult {
+  const checked = validateDraftCards(cards);
+  if (!checked.ok) return { ok: false, reason: `草稿未保存：${checked.reason}` };
+
   const store = storage === undefined ? safeStorage() : storage;
   if (!store) return { ok: false, reason: '浏览器存储不可用，草稿未保存' };
 
