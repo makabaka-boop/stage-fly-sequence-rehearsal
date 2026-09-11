@@ -153,6 +153,30 @@ input[type='number']:focus {
   border-color: var(--accent);
 }
 
+/* ---- 补全收尾反馈 ---- */
+.completion-feedback {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.completion-feedback strong {
+  margin-right: 4px;
+}
+
+.feedback-appended {
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  background: #16261f;
+}
+
+.feedback-closed {
+  color: var(--muted);
+  border: 1px solid var(--panel-edge);
+  background: #12141a;
+}
+
 /* ---- 本地排练草稿 ---- */
 .draft-panel {
   font-size: 13px;

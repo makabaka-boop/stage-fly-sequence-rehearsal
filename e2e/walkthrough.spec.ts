@@ -147,6 +147,7 @@ test('走台进行中锁定编辑入口，完成后重新可用', async ({ page 
   // 牌库与草稿操作锁定
   await expect(page.getByTestId('add-load')).toBeDisabled();
   await expect(page.getByTestId('add-cycle')).toBeDisabled();
+  await expect(page.getByTestId('complete-ending')).toBeDisabled();
   await expect(page.getByTestId('clear-all')).toBeDisabled();
   await expect(page.getByTestId('palette-weight')).toBeDisabled();
   await expect(page.getByTestId('save-draft')).toBeDisabled();
@@ -163,6 +164,7 @@ test('走台进行中锁定编辑入口，完成后重新可用', async ({ page 
   await expect(page.getByTestId('card-weight').first()).toBeEnabled();
   await expect(page.getByTestId('add-load')).toBeEnabled();
   await expect(page.getByTestId('add-cycle')).toBeEnabled();
+  await expect(page.getByTestId('complete-ending')).toBeEnabled();
   await expect(page.getByTestId('clear-all')).toBeEnabled();
   await expect(page.getByTestId('palette-weight')).toBeEnabled();
   await expect(page.getByTestId('save-draft')).toBeEnabled();

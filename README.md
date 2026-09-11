@@ -27,6 +27,15 @@
 - 结论由卡片序列实时派生：**任何增删、改重量或拖放重排都会清除旧结论并重新裁决**，不存在过期结果。
 - 三种结论：**闭合**（全部合法且回到空载归位）、**首错**（唯一定位第一张非法卡）、**未闭合**（全部合法但停在中途状态）。
 
+## 补全收尾（最短安全收尾）
+
+口令全部合法却停在载重、锁定或舞台位的半途序列，监督可点击牌库操作区的「补全收尾」，由系统按当前推演状态补出最短安全收尾，而不是手工猜测后续卡序：
+
+- 领域纯函数 `planCompletion` 读取当前裁决终态，确定性生成回到空载归位所需的卡片后缀；规划规则复用单卡前置条件：**舞台位先归位，锁定态再解锁，尚未完成「锁定→解锁」过程的载重态补齐该过程，最后卸载**。
+- 应用一次性追加带新标识的动作卡，并立即交给原裁决链复算；**已闭合序列不产生新卡**，重复点击只保留提示。
+- 当前序列已有**首错**时，操作保持卡序不变，并在牌库操作区说明应先修正的对应卡。
+- 走台进行中该入口随牌库一起禁用；补全结果为普通的动作卡，保存草稿、手工增删拖放与逐张走台流程完全不变。
+
 ## 走台会话（逐张报令）
 
 纸面预演之外，监督可以把整理好的序列转成逐张报令的走台会话，让操作者只看到当前应执行的口令、执行后的吊杆状态与剩余张数，而不是一次读完整条轨迹：
@@ -75,13 +84,16 @@ npm run verify     # 构建 + 单元测试 + 端到端测试
 
 ```
 src/domain/       状态机与裁决（types / machine / cards / describe），纯函数、无 UI 依赖
+                  completion.ts 为最短安全收尾：读裁决终态，确定性生成回空载归位的卡型后缀
                   draft.ts 为单槽位本地排练草稿：版本化 JSON 契约、逐卡校验、localStorage 读写
                   session.ts 为走台会话：快照 / 游标 / 吊杆状态与待命、进行中、完成、受阻的纯函数推进
 src/components/   牌库、可拖放序列、裁决横幅、状态面板、推演轨迹、草稿操作区、走台面板
 src/domain/__tests__/machine.test.ts   Vitest 裁决规则
+src/domain/__tests__/completion.test.ts Vitest 最短安全收尾：载重未锁定 / 舞台位锁定等终态
 src/domain/__tests__/draft.test.ts     Vitest 草稿契约与存储读写
 src/domain/__tests__/session.test.ts   Vitest 走台会话：合法推进、首错停步、末张幂等
 e2e/reorder.spec.ts                    Playwright 拖放重排复算
+e2e/complete.spec.ts                   Playwright 半途序列补全闭环、首错不改序、闭合不追加
 e2e/draft.spec.ts                      Playwright 草稿保存/恢复/损坏防护/刷新持久化
 e2e/walkthrough.spec.ts                Playwright 逐张走台、受阻停步与编辑锁定/恢复
 Dockerfile        多阶段：deps → build → web（nginx）/ verify（Playwright 镜像）

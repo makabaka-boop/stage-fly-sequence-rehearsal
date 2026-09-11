@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DraftControls, type DraftFeedback } from './components/DraftControls';
-import { Palette } from './components/Palette';
+import { Palette, type CompletionFeedback } from './components/Palette';
 import { SequenceList } from './components/SequenceList';
 import { StatePanel } from './components/StatePanel';
 import { Trajectory } from './components/Trajectory';
 import { VerdictBanner } from './components/VerdictBanner';
 import { WalkthroughPanel } from './components/WalkthroughPanel';
-import { CARD_ORDER } from './domain/cards';
+import { CARD_DEFS, CARD_ORDER } from './domain/cards';
+import { planCompletion } from './domain/completion';
 import { readStoredDraft, saveDraft, type DraftMeta } from './domain/draft';
 import { adjudicate } from './domain/machine';
 import { executeNext, idleSession, startSession, type WalkSession } from './domain/session';
@@ -30,6 +31,8 @@ export default function App() {
   const [draftMeta, setDraftMeta] = useState<DraftMeta | null>(null);
   const [storageCorrupt, setStorageCorrupt] = useState(false);
   const [feedback, setFeedback] = useState<DraftFeedback | null>(null);
+  // 补全收尾的短暂反馈（已追加 / 无需补全 / 存在首错）
+  const [completionFeedback, setCompletionFeedback] = useState<CompletionFeedback | null>(null);
   // 走台会话：待命 / 进行中 / 完成 / 受阻，由纯函数推进，刷新即回到待命
   const [session, setSession] = useState<WalkSession>(() => idleSession());
   const [sessionFeedback, setSessionFeedback] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export default function App() {
   }, []);
 
   const clearFeedback = useCallback(() => setFeedback(null), []);
+  const clearCompletionFeedback = useCallback(() => setCompletionFeedback(null), []);
 
   // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
@@ -117,6 +121,44 @@ export default function App() {
     });
   }, []);
 
+  // 补全收尾：领域纯函数读取当前裁决终态，确定性生成回到空载归位的最短安全收尾，
+  // 一次性追加带新标识的动作卡；cards 变化后立即走原有裁决链复算。
+  const handleCompleteEnding = useCallback(() => {
+    if (verdict.firstErrorIndex !== null) {
+      // 已有首错：保持卡序不变，在牌库操作区说明应先修正对应卡
+      const step = verdict.steps[verdict.firstErrorIndex];
+      const name = CARD_DEFS[step.card.type].name;
+      setCompletionFeedback({
+        kind: 'error',
+        text: `当前序列存在首错（第 ${verdict.firstErrorIndex + 1} 张「${name}」）：请先修正该卡，再补全收尾；卡序保持不变。`,
+      });
+      return;
+    }
+    if (verdict.closed) {
+      // 已闭合序列不产生新卡
+      setCompletionFeedback({
+        kind: 'closed',
+        text: '整套口令已闭合，吊杆已回到空载归位，无需补全收尾，未追加新卡。',
+      });
+      return;
+    }
+    const suffix = planCompletion(verdict.finalState);
+    if (suffix.length === 0) {
+      // 空序列：吊杆本就在空载归位，没有需要补全的半途状态
+      setCompletionFeedback({
+        kind: 'closed',
+        text: '序列为空，无需补全：请先从牌库添加口令卡，或点击「生成标准闭环」。',
+      });
+      return;
+    }
+    const names = suffix.map((type) => CARD_DEFS[type].name).join(' → ');
+    setCards((prev) => [...prev, ...suffix.map((type) => makeCard(type))]);
+    setCompletionFeedback({
+      kind: 'appended',
+      text: `已按当前推演状态追加 ${suffix.length} 张收尾卡：${names}，序列已重新裁决。`,
+    });
+  }, [verdict]);
+
   const addCard = (type: CardType, weightKg?: number) =>
     setCards((prev) => [...prev, makeCard(type, weightKg)]);
 
@@ -167,6 +209,9 @@ export default function App() {
             onAdd={addCard}
             onAddCycle={addCycle}
             onClear={() => setCards([])}
+            onComplete={handleCompleteEnding}
+            completionFeedback={completionFeedback}
+            onCompletionFeedbackDone={clearCompletionFeedback}
             hasCards={cards.length > 0}
             disabled={sessionRunning}
           />
