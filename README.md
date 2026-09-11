@@ -36,6 +36,15 @@
 - 当前序列已有**首错**时，操作保持卡序不变，并在牌库操作区说明应先修正的对应卡。
 - 走台进行中该入口随牌库一起禁用；补全结果为普通的动作卡，保存草稿、手工增删拖放与逐张走台流程完全不变。
 
+## 载重校准（整批统一增减）
+
+剧场更换配重标定后，同一份编排中的多次装载需要按统一差额校准。监督在牌库输入整数千克差额（可正可负）并点击「应用载重校准」，一次调整全部装载卡，无需逐张修改：
+
+- 领域纯函数 `planCalibration` 基于当前序列生成候选卡组：只改写装载卡的重量，卡片标识、类型与先后顺序全部保留；整批通过后应用一次性原子替换，反馈调整张数，并立即交给现有裁决链复算。
+- 边界复用装载重量的 1–500 千克整数契约：**任一装载卡的计算结果越界即拒绝整批**，在牌库操作区指出首张受影响卡的位置与计算后重量，界面继续展示原序列与原结论；装载卡未填写重量同样整批拒绝。
+- 当前序列没有装载卡时不改动任何卡片，并给出无需校准的说明。
+- 走台进行中校准入口随牌库一起锁定，结束后恢复；校准后的卡片仍是普通动作卡，保存草稿、恢复草稿、补全收尾、手工编辑与刷新空序列行为完全兼容。
+
 ## 走台会话（逐张报令）
 
 纸面预演之外，监督可以把整理好的序列转成逐张报令的走台会话，让操作者只看到当前应执行的口令、执行后的吊杆状态与剩余张数，而不是一次读完整条轨迹：
@@ -85,15 +94,18 @@ npm run verify     # 构建 + 单元测试 + 端到端测试
 ```
 src/domain/       状态机与裁决（types / machine / cards / describe），纯函数、无 UI 依赖
                   completion.ts 为最短安全收尾：读裁决终态，确定性生成回空载归位的卡型后缀
+                  calibration.ts 为载重校准：统一增减全部装载重量，任一张越界即整批拒绝
                   draft.ts 为单槽位本地排练草稿：版本化 JSON 契约、逐卡校验、localStorage 读写
                   session.ts 为走台会话：快照 / 游标 / 吊杆状态与待命、进行中、完成、受阻的纯函数推进
 src/components/   牌库、可拖放序列、裁决横幅、状态面板、推演轨迹、草稿操作区、走台面板
 src/domain/__tests__/machine.test.ts   Vitest 裁决规则
 src/domain/__tests__/completion.test.ts Vitest 最短安全收尾：载重未锁定 / 舞台位锁定等终态
+src/domain/__tests__/calibration.test.ts Vitest 载重校准：统一增减不改标识、单卡越界全批回滚
 src/domain/__tests__/draft.test.ts     Vitest 草稿契约与存储读写
 src/domain/__tests__/session.test.ts   Vitest 走台会话：合法推进、首错停步、末张幂等
 e2e/reorder.spec.ts                    Playwright 拖放重排复算
 e2e/complete.spec.ts                   Playwright 半途序列补全闭环、首错不改序、闭合不追加
+e2e/calibration.spec.ts                Playwright 两段闭环统一校准复算、越界回滚、无装载卡提示
 e2e/draft.spec.ts                      Playwright 草稿保存/恢复/损坏防护/刷新持久化
 e2e/walkthrough.spec.ts                Playwright 逐张走台、受阻停步与编辑锁定/恢复
 Dockerfile        多阶段：deps → build → web（nginx）/ verify（Playwright 镜像）

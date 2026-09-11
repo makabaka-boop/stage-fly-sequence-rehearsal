@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DraftControls, type DraftFeedback } from './components/DraftControls';
-import { Palette, type CompletionFeedback } from './components/Palette';
+import { Palette, type CalibrationFeedback, type CompletionFeedback } from './components/Palette';
 import { SequenceList } from './components/SequenceList';
 import { StatePanel } from './components/StatePanel';
 import { Trajectory } from './components/Trajectory';
 import { VerdictBanner } from './components/VerdictBanner';
 import { WalkthroughPanel } from './components/WalkthroughPanel';
+import { planCalibration } from './domain/calibration';
 import { CARD_DEFS, CARD_ORDER } from './domain/cards';
 import { planCompletion } from './domain/completion';
 import { readStoredDraft, saveDraft, type DraftMeta } from './domain/draft';
@@ -33,6 +34,8 @@ export default function App() {
   const [feedback, setFeedback] = useState<DraftFeedback | null>(null);
   // 补全收尾的短暂反馈（已追加 / 无需补全 / 存在首错）
   const [completionFeedback, setCompletionFeedback] = useState<CompletionFeedback | null>(null);
+  // 载重校准的短暂反馈（已应用 / 无装载卡 / 整批拒绝）
+  const [calibrationFeedback, setCalibrationFeedback] = useState<CalibrationFeedback | null>(null);
   // 走台会话：待命 / 进行中 / 完成 / 受阻，由纯函数推进，刷新即回到待命
   const [session, setSession] = useState<WalkSession>(() => idleSession());
   const [sessionFeedback, setSessionFeedback] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export default function App() {
 
   const clearFeedback = useCallback(() => setFeedback(null), []);
   const clearCompletionFeedback = useCallback(() => setCompletionFeedback(null), []);
+  const clearCalibrationFeedback = useCallback(() => setCalibrationFeedback(null), []);
 
   // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
@@ -159,6 +163,52 @@ export default function App() {
     });
   }, [verdict]);
 
+  // 载重校准：领域纯函数基于当前序列生成候选卡组，只改装载重量且保留卡片标识
+  // 与顺序；整批通过后单次 setCards 原子替换，cards 变化立即走现有裁决链复算。
+  // 任一结果越界（或没有装载卡）时不触碰 cards，界面继续展示原序列与原结论。
+  const handleCalibrate = useCallback(
+    (deltaKg: number) => {
+      const result = planCalibration(cards, deltaKg);
+      if (!result.ok) {
+        switch (result.kind) {
+          case 'invalid-delta':
+            setCalibrationFeedback({
+              kind: 'error',
+              text: '校准差额须为整数千克（可正可负），未改动任何卡片。',
+            });
+            return;
+          case 'no-load-cards':
+            setCalibrationFeedback({
+              kind: 'no-load',
+              text: '当前序列没有装载卡，无需载重校准；序列与裁决结论保持不变。',
+            });
+            return;
+          case 'missing-weight':
+            setCalibrationFeedback({
+              kind: 'error',
+              text: `第 ${result.index + 1} 张「装载」未填写重量，无法计算校准结果；已拒绝整批校准，序列与裁决结论保持不变。`,
+            });
+            return;
+          case 'out-of-range':
+            setCalibrationFeedback({
+              kind: 'error',
+              text: `第 ${result.index + 1} 张「装载」校准后为 ${result.computedWeightKg} 千克，越出 1–500 千克边界；已拒绝整批校准，序列与裁决结论保持不变。`,
+            });
+            return;
+        }
+      }
+      // 整批通过：原子替换整套序列，立即交给现有裁决链复算
+      setCards(result.cards);
+      setDragIndex(null);
+      const signed = deltaKg > 0 ? `+${deltaKg}` : String(deltaKg);
+      setCalibrationFeedback({
+        kind: 'applied',
+        text: `已按统一差额 ${signed} 千克校准 ${result.adjustedCount} 张装载卡，卡片标识与顺序不变，序列已重新裁决。`,
+      });
+    },
+    [cards],
+  );
+
   const addCard = (type: CardType, weightKg?: number) =>
     setCards((prev) => [...prev, makeCard(type, weightKg)]);
 
@@ -212,6 +262,9 @@ export default function App() {
             onComplete={handleCompleteEnding}
             completionFeedback={completionFeedback}
             onCompletionFeedbackDone={clearCompletionFeedback}
+            onCalibrate={handleCalibrate}
+            calibrationFeedback={calibrationFeedback}
+            onCalibrationFeedbackDone={clearCalibrationFeedback}
             hasCards={cards.length > 0}
             disabled={sessionRunning}
           />

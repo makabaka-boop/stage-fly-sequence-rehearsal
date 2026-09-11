@@ -153,6 +153,59 @@ input[type='number']:focus {
   border-color: var(--accent);
 }
 
+/* ---- 载重校准 ---- */
+.calibration {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.calibration .weight-field {
+  margin-bottom: 8px;
+}
+
+.calibration button {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: #2a2f40;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.calibration button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.calibration button:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.calibration-feedback {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.calibration-feedback strong {
+  margin-right: 4px;
+}
+
+.feedback-applied {
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  background: #16261f;
+}
+
+.feedback-no-load {
+  color: var(--muted);
+  border: 1px solid var(--panel-edge);
+  background: #12141a;
+}
+
 /* ---- 补全收尾反馈 ---- */
 .completion-feedback {
   margin: 10px 0 0;

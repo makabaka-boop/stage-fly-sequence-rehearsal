@@ -8,6 +8,12 @@ export type CompletionFeedback =
   | { kind: 'closed'; text: string }
   | { kind: 'error'; text: string };
 
+/** 载重校准反馈：已应用 / 无装载卡 / 整批拒绝（差额非法或结果越界），均为短暂状态 */
+export type CalibrationFeedback =
+  | { kind: 'applied'; text: string }
+  | { kind: 'no-load'; text: string }
+  | { kind: 'error'; text: string };
+
 interface PaletteProps {
   onAdd: (type: CardType, weightKg?: number) => void;
   onAddCycle: (weightKg?: number) => void;
@@ -16,8 +22,12 @@ interface PaletteProps {
   onComplete: () => void;
   completionFeedback: CompletionFeedback | null;
   onCompletionFeedbackDone: () => void;
+  /** 载重校准：对当前序列所有装载卡统一增减整数千克差额 */
+  onCalibrate: (deltaKg: number) => void;
+  calibrationFeedback: CalibrationFeedback | null;
+  onCalibrationFeedbackDone: () => void;
   hasCards: boolean;
-  /** 走台进行中置位：牌库整体锁定，不可添加、清空或补全收尾 */
+  /** 走台进行中置位：牌库整体锁定，不可添加、清空、补全收尾或载重校准 */
   disabled?: boolean;
 }
 
@@ -29,7 +39,13 @@ const COMPLETION_FEEDBACK_LABEL: Record<CompletionFeedback['kind'], string> = {
   error: '无法补全',
 };
 
-/** 左侧牌库：添加单卡、生成标准闭环、补全收尾、清空 */
+const CALIBRATION_FEEDBACK_LABEL: Record<CalibrationFeedback['kind'], string> = {
+  applied: '校准完成',
+  'no-load': '无需校准',
+  error: '无法校准',
+};
+
+/** 左侧牌库：添加单卡、生成标准闭环、补全收尾、载重校准、清空 */
 export function Palette({
   onAdd,
   onAddCycle,
@@ -37,12 +53,20 @@ export function Palette({
   onComplete,
   completionFeedback,
   onCompletionFeedbackDone,
+  onCalibrate,
+  calibrationFeedback,
+  onCalibrationFeedbackDone,
   hasCards,
   disabled = false,
 }: PaletteProps) {
   const [weightText, setWeightText] = useState('100');
   const parsed = Number(weightText);
   const weight = weightText.trim() === '' || !Number.isFinite(parsed) ? undefined : parsed;
+
+  // 校准差额：空输入按非法差额处理，由领域纯函数统一拒绝
+  const [deltaText, setDeltaText] = useState('50');
+  const parsedDelta = Number(deltaText);
+  const delta = deltaText.trim() === '' || !Number.isFinite(parsedDelta) ? Number.NaN : parsedDelta;
 
   const timer = useRef<number | null>(null);
   useEffect(() => {
@@ -53,6 +77,16 @@ export function Palette({
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
   }, [completionFeedback, onCompletionFeedbackDone]);
+
+  const calibrationTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!calibrationFeedback) return;
+    if (calibrationTimer.current !== null) window.clearTimeout(calibrationTimer.current);
+    calibrationTimer.current = window.setTimeout(onCalibrationFeedbackDone, FEEDBACK_TTL_MS);
+    return () => {
+      if (calibrationTimer.current !== null) window.clearTimeout(calibrationTimer.current);
+    };
+  }, [calibrationFeedback, onCalibrationFeedbackDone]);
 
   return (
     <section className="panel palette" aria-label="口令卡牌库">
@@ -104,6 +138,39 @@ export function Palette({
           清空
         </button>
       </div>
+      <div className="calibration">
+        <label className="weight-field">
+          载重校准差额（千克）
+          <input
+            data-testid="calibration-delta"
+            type="number"
+            value={deltaText}
+            onChange={(e) => setDeltaText(e.target.value)}
+            placeholder="整数千克，可正可负"
+            disabled={disabled}
+          />
+        </label>
+        <button
+          type="button"
+          data-testid="apply-calibration"
+          title="对当前序列所有装载卡统一增减该差额；任一结果越出 1–500 千克即整批拒绝"
+          disabled={disabled}
+          onClick={() => onCalibrate(delta)}
+        >
+          应用载重校准
+        </button>
+      </div>
+      {calibrationFeedback && (
+        <p
+          className={`calibration-feedback feedback-${calibrationFeedback.kind}`}
+          data-testid="calibration-feedback"
+          data-kind={calibrationFeedback.kind}
+          role={calibrationFeedback.kind === 'error' ? 'alert' : 'status'}
+        >
+          <strong>{CALIBRATION_FEEDBACK_LABEL[calibrationFeedback.kind]}：</strong>
+          {calibrationFeedback.text}
+        </p>
+      )}
       {completionFeedback && (
         <p
           className={`completion-feedback feedback-${completionFeedback.kind}`}
