@@ -1,8 +1,8 @@
-import { applyCard, INITIAL_STATE } from './machine';
+import { applyCard, INITIAL_STATE, isInitialState } from './machine';
 import type { ActionCard, RigState } from './types';
 
-/** 走台会话状态：待命 / 进行中 / 完成 / 受阻 */
-export type SessionStatus = 'idle' | 'running' | 'completed' | 'blocked';
+/** 走台会话状态：待命 / 进行中 / 完成 / 受阻 / 未闭合 */
+export type SessionStatus = 'idle' | 'running' | 'completed' | 'blocked' | 'unclosed';
 
 /** 受阻详情：记录受阻卡的位置、卡片与非法原因 */
 export interface BlockedInfo {
@@ -50,9 +50,10 @@ export function startSession(cards: readonly ActionCard[]): WalkSession {
 
 /**
  * 执行下一张：通过现有单卡裁决推进游标。纯函数，不修改入参。
- * - 合法：吊杆状态前进，游标加一；执行完末张即完成；
+ * - 合法：吊杆状态前进，游标加一；
+ * - 末张执行完毕：只有回到空载归位才算完成，合法但未归位则为未闭合；
  * - 非法：会话受阻，停在执行前状态并记录卡号与原因；
- * - 非进行中（待命 / 完成 / 受阻）：原样返回同一引用，
+ * - 非进行中（待命 / 完成 / 受阻 / 未闭合）：原样返回同一引用，
  *   重复点击不会越过末张或受阻卡。
  */
 export function executeNext(session: WalkSession): WalkSession {
@@ -70,9 +71,13 @@ export function executeNext(session: WalkSession): WalkSession {
   }
 
   const cursor = session.cursor + 1;
+  if (cursor < session.snapshot.length) {
+    return { ...session, status: 'running', cursor, state: result.state };
+  }
+  // 末张执行完毕：回到空载归位才是走台完成，否则为未闭合（终态）
   return {
     ...session,
-    status: cursor >= session.snapshot.length ? 'completed' : 'running',
+    status: isInitialState(result.state) ? 'completed' : 'unclosed',
     cursor,
     state: result.state,
   };

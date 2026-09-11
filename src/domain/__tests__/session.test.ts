@@ -95,7 +95,7 @@ describe('合法推进', () => {
     expect(remainingCount(s)).toBe(1);
   });
 
-  it('执行完末张即完成，标准闭环回到空载归位', () => {
+  it('执行完末张且回到空载归位即完成', () => {
     const s = run(startSession(fullCycle()), 6);
     expect(s.status).toBe('completed');
     expect(s.cursor).toBe(6);
@@ -104,17 +104,42 @@ describe('合法推进', () => {
     expect(s.blocked).toBeNull();
   });
 
-  it('全部合法但未回到初始状态时同样完成，并停在中途状态', () => {
-    const s = run(startSession([card('load', 50), card('lock')]), 2);
-    expect(s.status).toBe('completed');
-    expect(s.state).toEqual({ loadKg: 50, position: 'home', locked: true, unlockedSinceLoad: false });
-  });
-
   it('推进不修改传入的会话对象', () => {
     const before = startSession(fullCycle());
     const snapshot = JSON.parse(JSON.stringify(before));
     executeNext(before);
     expect(before).toEqual(snapshot);
+  });
+});
+
+describe('未闭合', () => {
+  it('全部合法但未回到空载归位时为未闭合，而非完成', () => {
+    const s = run(startSession([card('load', 50), card('lock')]), 2);
+    expect(s.status).toBe('unclosed');
+    expect(s.cursor).toBe(2);
+    expect(remainingCount(s)).toBe(0);
+    expect(s.state).toEqual({ loadKg: 50, position: 'home', locked: true, unlockedSinceLoad: false });
+    expect(s.blocked).toBeNull();
+  });
+
+  it('只执行装载也是未闭合', () => {
+    const s = run(startSession([card('load', 100)]), 1);
+    expect(s.status).toBe('unclosed');
+    expect(s.status).not.toBe('completed');
+    expect(s.state.loadKg).toBe(100);
+  });
+
+  it('未闭合是终态：重复点击不再推进（同一引用）', () => {
+    const s = run(startSession([card('load', 50)]), 1);
+    expect(s.status).toBe('unclosed');
+    expect(executeNext(s)).toBe(s);
+    expect(s.cursor).toBe(1);
+  });
+
+  it('装载→锁定→解锁→卸载（不经舞台位）回到空载归位，仍为完成', () => {
+    const s = run(startSession([card('load', 80), card('lock'), card('unlock'), card('unload')]), 4);
+    expect(s.status).toBe('completed');
+    expect(isInitialState(s.state)).toBe(true);
   });
 });
 

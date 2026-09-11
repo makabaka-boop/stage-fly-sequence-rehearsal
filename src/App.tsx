@@ -181,19 +181,24 @@ export default function App() {
           />
         </div>
         <section className="panel sequence-panel" aria-label="口令序列">
-          <h2>口令序列（可拖放排序）</h2>
-          <SequenceList
-            cards={cards}
-            steps={verdict.steps}
-            dragIndex={dragIndex}
-            locked={sessionRunning}
-            onDragStart={setDragIndex}
-            onDragEnd={() => setDragIndex(null)}
-            onDropAt={dropAt}
-            onMove={moveCard}
-            onRemove={removeCard}
-            onWeightChange={updateWeight}
-          />
+          <h2>{sessionRunning ? '口令序列（走台中已收起）' : '口令序列（可拖放排序）'}</h2>
+          {sessionRunning ? (
+            <p className="empty-hint" data-testid="sequence-locked-hint">
+              走台进行中：整套口令序列已收起，操作者只按走台面板的当前口令逐张执行。
+            </p>
+          ) : (
+            <SequenceList
+              cards={cards}
+              steps={verdict.steps}
+              dragIndex={dragIndex}
+              onDragStart={setDragIndex}
+              onDragEnd={() => setDragIndex(null)}
+              onDropAt={dropAt}
+              onMove={moveCard}
+              onRemove={removeCard}
+              onWeightChange={updateWeight}
+            />
+          )}
         </section>
         <aside className="side">
           <WalkthroughPanel

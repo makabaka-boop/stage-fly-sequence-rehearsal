@@ -1,6 +1,5 @@
 import { CARD_DEFS } from '../domain/cards';
 import { describeState } from '../domain/describe';
-import { isInitialState } from '../domain/machine';
 import { remainingCount, type WalkSession } from '../domain/session';
 
 interface WalkthroughPanelProps {
@@ -73,9 +72,29 @@ export function WalkthroughPanel({ session, feedback, onStart, onExecuteNext }: 
             ✔ 走台完成：{total} 张口令全部执行。
           </p>
           <p className="walkthrough-state" data-testid="walkthrough-state">
-            {isInitialState(state)
-              ? '吊杆已回到空载归位。'
-              : `吊杆停在「${describeState(state)}」，未回到空载归位。`}
+            吊杆已回到空载归位。
+          </p>
+          <div className="walkthrough-actions">
+            <button type="button" data-testid="execute-next" onClick={onExecuteNext}>
+              执行下一张
+            </button>
+            <button type="button" data-testid="start-walkthrough" onClick={onStart}>
+              开始走台
+            </button>
+          </div>
+        </div>
+      )}
+
+      {status === 'unclosed' && (
+        <div className="walkthrough-body">
+          <p className="walkthrough-result walkthrough-unclosed" data-testid="walkthrough-result" role="alert">
+            走台未闭合：{total} 张口令全部执行，但吊杆未回到空载归位。
+          </p>
+          <p className="walkthrough-state" data-testid="walkthrough-state">
+            吊杆停在「{describeState(state)}」。
+          </p>
+          <p className="walkthrough-hint">
+            口令已执行完毕，但未构成闭环；请整理序列使吊杆回到空载归位后重新走台。
           </p>
           <div className="walkthrough-actions">
             <button type="button" data-testid="execute-next" onClick={onExecuteNext}>

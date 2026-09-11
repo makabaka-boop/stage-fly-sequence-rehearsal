@@ -331,6 +331,10 @@ input[type='number']:focus {
   color: var(--ok);
 }
 
+.walkthrough-unclosed {
+  color: var(--warn);
+}
+
 .walkthrough-blocked {
   color: var(--err);
 }
