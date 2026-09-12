@@ -55,6 +55,18 @@ export default function App() {
   const clearFeedback = useCallback(() => setFeedback(null), []);
   const clearCompletionFeedback = useCallback(() => setCompletionFeedback(null), []);
   const clearCalibrationFeedback = useCallback(() => setCalibrationFeedback(null), []);
+  const clearSequenceFeedback = useCallback(() => {
+    setCompletionFeedback(null);
+    setCalibrationFeedback(null);
+  }, []);
+
+  const changeCards = useCallback(
+    (updater: (prev: ActionCard[]) => ActionCard[]) => {
+      setCards(updater);
+      clearSequenceFeedback();
+    },
+    [clearSequenceFeedback],
+  );
 
   // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
@@ -114,20 +126,23 @@ export default function App() {
       setFeedback({ kind: 'error', text: '没有可恢复的草稿，当前序列保持不变。' });
       return;
     }
+    const restoredCards = result.draft.cards;
     // 原子替换整套序列：单次 state 更新后立即走现有裁决链。
-    setCards(result.draft.cards);
+    changeCards(() => restoredCards);
     setDragIndex(null);
-    setDraftMeta({ savedAt: result.draft.savedAt, cardCount: result.draft.cards.length });
+    setDraftMeta({ savedAt: result.draft.savedAt, cardCount: restoredCards.length });
     setStorageCorrupt(false);
     setFeedback({
       kind: 'restored',
-      text: `已恢复 ${result.draft.cards.length} 张口令卡并重新裁决。`,
+      text: `已恢复 ${restoredCards.length} 张口令卡并重新裁决。`,
     });
-  }, []);
+  }, [changeCards]);
 
   // 补全收尾：领域纯函数读取当前裁决终态，确定性生成回到空载归位的最短安全收尾，
   // 一次性追加带新标识的动作卡；cards 变化后立即走原有裁决链复算。
   const handleCompleteEnding = useCallback(() => {
+    // 补全操作产生当前反馈后，上一轮载重校准反馈立即过期。
+    setCalibrationFeedback(null);
     if (verdict.firstErrorIndex !== null) {
       // 已有首错：保持卡序不变，在牌库操作区说明应先修正对应卡
       const step = verdict.steps[verdict.firstErrorIndex];
@@ -156,18 +171,20 @@ export default function App() {
       return;
     }
     const names = suffix.map((type) => CARD_DEFS[type].name).join(' → ');
-    setCards((prev) => [...prev, ...suffix.map((type) => makeCard(type))]);
+    changeCards((prev) => [...prev, ...suffix.map((type) => makeCard(type))]);
     setCompletionFeedback({
       kind: 'appended',
       text: `已按当前推演状态追加 ${suffix.length} 张收尾卡：${names}，序列已重新裁决。`,
     });
-  }, [verdict]);
+  }, [changeCards, verdict]);
 
-  // 载重校准：领域纯函数基于当前序列生成候选卡组，只改装载重量且保留卡片标识
-  // 与顺序；整批通过后单次 setCards 原子替换，cards 变化立即走现有裁决链复算。
+  // 载重校准：领域纯函数基于当前序列生成候选卡组，只改装载重量并保留卡片标识
+  // 与顺序；整批通过后通过 changeCards 原子替换，cards 变化立即走现有裁决链复算。
   // 任一结果越界（或没有装载卡）时不触碰 cards，界面继续展示原序列与原结论。
   const handleCalibrate = useCallback(
     (deltaKg: number) => {
+      // 校准操作产生当前反馈后，上一轮补全收尾反馈立即过期。
+      setCompletionFeedback(null);
       const result = planCalibration(cards, deltaKg);
       if (!result.ok) {
         switch (result.kind) {
@@ -198,7 +215,7 @@ export default function App() {
         }
       }
       // 整批通过：原子替换整套序列，立即交给现有裁决链复算
-      setCards(result.cards);
+      changeCards(() => result.cards);
       setDragIndex(null);
       const signed = deltaKg > 0 ? `+${deltaKg}` : String(deltaKg);
       setCalibrationFeedback({
@@ -206,25 +223,25 @@ export default function App() {
         text: `已按统一差额 ${signed} 千克校准 ${result.adjustedCount} 张装载卡，卡片标识与顺序不变，序列已重新裁决。`,
       });
     },
-    [cards],
+    [cards, changeCards],
   );
 
   const addCard = (type: CardType, weightKg?: number) =>
-    setCards((prev) => [...prev, makeCard(type, weightKg)]);
+    changeCards((prev) => [...prev, makeCard(type, weightKg)]);
 
   const addCycle = (weightKg?: number) =>
-    setCards((prev) => [
+    changeCards((prev) => [
       ...prev,
       ...CARD_ORDER.map((type) => makeCard(type, type === 'load' ? weightKg : undefined)),
     ]);
 
-  const removeCard = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
+  const removeCard = (id: string) => changeCards((prev) => prev.filter((c) => c.id !== id));
 
   const updateWeight = (id: string, weightKg: number | undefined) =>
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, weightKg } : c)));
+    changeCards((prev) => prev.map((c) => (c.id === id ? { ...c, weightKg } : c)));
 
   const moveCard = (from: number, to: number) =>
-    setCards((prev) => {
+    changeCards((prev) => {
       if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) {
         return prev;
       }
@@ -258,7 +275,7 @@ export default function App() {
           <Palette
             onAdd={addCard}
             onAddCycle={addCycle}
-            onClear={() => setCards([])}
+            onClear={() => changeCards(() => [])}
             onComplete={handleCompleteEnding}
             completionFeedback={completionFeedback}
             onCompletionFeedbackDone={clearCompletionFeedback}
