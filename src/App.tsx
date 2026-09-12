@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DraftControls, type DraftFeedback } from './components/DraftControls';
+import { HistoryControls } from './components/HistoryControls';
 import { Palette, type CalibrationFeedback, type CompletionFeedback } from './components/Palette';
 import { SequenceList } from './components/SequenceList';
 import { StatePanel } from './components/StatePanel';
@@ -10,6 +11,15 @@ import { planCalibration } from './domain/calibration';
 import { CARD_DEFS, CARD_ORDER } from './domain/cards';
 import { planCompletion } from './domain/completion';
 import { readStoredDraft, saveDraft, type DraftMeta } from './domain/draft';
+import {
+  canRedo,
+  canUndo,
+  commitEdit,
+  emptyHistory,
+  redoEdit,
+  undoEdit,
+  type EditHistory,
+} from './domain/history';
 import { adjudicate } from './domain/machine';
 import { executeNext, idleSession, startSession, type WalkSession } from './domain/session';
 import type { ActionCard, CardType } from './domain/types';
@@ -39,6 +49,18 @@ export default function App() {
   // 走台会话：待命 / 进行中 / 完成 / 受阻，由纯函数推进，刷新即回到待命
   const [session, setSession] = useState<WalkSession>(() => idleSession());
   const [sessionFeedback, setSessionFeedback] = useState<string | null>(null);
+  // 编辑履历：仅限本次页面会话，纯函数维护最多二十步过去/未来记录，刷新即为空
+  const [history, setHistory] = useState<EditHistory>(() => emptyHistory());
+  // 撤销/重做不可用时的就地说明（短暂状态）
+  const [historyFeedback, setHistoryFeedback] = useState<string | null>(null);
+
+  // 事件处理器外读取最新序列与履历用的引用（避免 setState 更新函数内的副作用）
+  const cardsRef = useRef(cards);
+  const historyRef = useRef(history);
+  useEffect(() => {
+    cardsRef.current = cards;
+    historyRef.current = history;
+  }, [cards, history]);
 
   // 启动时仅探测草稿槽位是否可恢复：任何存储异常都在操作区说明，不能穿透到页面。
   useEffect(() => {
@@ -60,13 +82,49 @@ export default function App() {
     setCalibrationFeedback(null);
   }, []);
 
+  // 所有成功编辑（增删、改重、拖放、补全、校准、草稿恢复）的统一入口：
+  // 以完整序列作为事务载荷提交履历；失败路径不经过这里，无变化时纯函数原样返回。
   const changeCards = useCallback(
     (updater: (prev: ActionCard[]) => ActionCard[]) => {
-      setCards(updater);
+      const prev = cardsRef.current;
+      const next = updater(prev);
+      setHistory((h) => commitEdit(h, prev, next));
+      setCards(next);
       clearSequenceFeedback();
+      setHistoryFeedback(null);
     },
     [clearSequenceFeedback],
   );
+
+  // 撤销/重做：原子替换整套卡组，cards 变化立即走现有裁决链复算；
+  // 只改写屏幕序列，不触碰本地草稿槽位。无记录时保持序列不变并就地说明。
+  const handleUndo = useCallback(() => {
+    const result = undoEdit(historyRef.current, cardsRef.current);
+    if (!result) {
+      setHistoryFeedback('没有可撤销的编辑：本次会话尚未记录成功改动，序列保持不变。');
+      return;
+    }
+    setHistory(result.history);
+    setCards(result.cards);
+    setDragIndex(null);
+    clearSequenceFeedback();
+    setHistoryFeedback(null);
+  }, [clearSequenceFeedback]);
+
+  const handleRedo = useCallback(() => {
+    const result = redoEdit(historyRef.current, cardsRef.current);
+    if (!result) {
+      setHistoryFeedback('没有可重做的编辑：请先撤销，或继续新的编辑，序列保持不变。');
+      return;
+    }
+    setHistory(result.history);
+    setCards(result.cards);
+    setDragIndex(null);
+    clearSequenceFeedback();
+    setHistoryFeedback(null);
+  }, [clearSequenceFeedback]);
+
+  const clearHistoryFeedback = useCallback(() => setHistoryFeedback(null), []);
 
   // 结论完全由 cards 派生：任何增删、重排或草稿恢复都会改变 cards，
   // 旧结论随之被丢弃并重新裁决，不存在过期结果。
@@ -297,6 +355,15 @@ export default function App() {
         </div>
         <section className="panel sequence-panel" aria-label="口令序列">
           <h2>{sessionRunning ? '口令序列（走台中已收起）' : '口令序列（可拖放排序）'}</h2>
+          <HistoryControls
+            canUndo={canUndo(history)}
+            canRedo={canRedo(history)}
+            feedback={historyFeedback}
+            disabled={sessionRunning}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onFeedbackDone={clearHistoryFeedback}
+          />
           {sessionRunning ? (
             <p className="empty-hint" data-testid="sequence-locked-hint">
               走台进行中：整套口令序列已收起，操作者只按走台面板的当前口令逐张执行。
